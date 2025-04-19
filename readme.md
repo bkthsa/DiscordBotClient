@@ -3,8 +3,7 @@
 
 > [!WARNING]
 > **Third party clients are discouraged and against the Discord TOS.**
->
-> This is a **forked repository** — I'll do my best to keep it updated **daily**.
+>This is a **forked repository** — I'll do my best to keep it updated **daily**.
 
 ## Overview
 
