@@ -1,6 +1,8 @@
 <h1 align="center">Discord Bot Client</h1>
 **Discord Bot Client** allows you to use your bot, just like any other user account, except Friends and Groups. 
+
 > ⚠️ This is a **forked repository** — I'll do my best to keep it updated **daily**.
+
 ## Overview
 
 - [How to install it](#installation)
