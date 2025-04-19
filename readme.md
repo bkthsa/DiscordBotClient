@@ -1,7 +1,8 @@
 <h1 align="center">Discord Bot Client</h1>
 **Discord Bot Client** allows you to use your bot, just like any other user account, except Friends and Groups. 
 
-
+> [!WARNING]
+> **Third party clients are discouraged and against the Discord TOS.**
 > ⚠️ This is a **forked repository** — I'll do my best to keep it updated **daily**.
 
 ## Overview
@@ -20,8 +21,7 @@
 - [Update Discord Version](#how-to-update-to-the-latest-discord-version-)
 - [Credits](#credits)
 
-> [!WARNING]
-> **Third party clients are discouraged and against the Discord TOS.**
+
 
 Discord Bot Client is a custom [Discord](https://discord.com/app) client that aims to
 support bot accounts and be aimed at power-users.
