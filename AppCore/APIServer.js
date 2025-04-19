@@ -4,7 +4,6 @@ const morgan = require('morgan');
 const { Server } = require('lambert-server');
 const path = require('path');
 const { readFileSync } = require('fs');
-const request = require('request');
 const { Writable } = require('stream');
 const { scope } = require('electron-log');
 
@@ -15,9 +14,10 @@ class CustomLogStream extends Writable {
 	}
 }
 
-const logger =  new CustomLogStream();
+const logger = new CustomLogStream();
 
 const Constants = require('./Constants');
+const proxy = require('./Proxy');
 
 const app = express();
 
@@ -44,7 +44,7 @@ lambertServer.registerRoutes(path.resolve(__dirname, `routes`) + path.sep);
 lambertServer.app = app;
 
 // Proxy
-app.all('/bot*', function (req, res, next) {
+app.all('*', function (req, res, next) {
 	let headers = {
 		'user-agent': Constants.UserAgentDiscordBot,
 	};
@@ -75,9 +75,9 @@ app.all('/bot*', function (req, res, next) {
 	next();
 });
 // Routes: v10, v9, default, ...
-app.use('/bot/api/v10', route);
-app.use('/bot/api/v9', route);
-app.use('/bot/api', route);
+app.use('/api/v10', route);
+app.use('/api/v9', route);
+app.use('/api', route);
 app.use(route);
 app.all('/developers/*', (req, res) => {
 	return res.redirect('/app');
@@ -90,30 +90,21 @@ app.use((req, res, next) => {
 			message: 'Bots cannot use this endpoint (blocked by blacklist)',
 			code: 20001,
 		});
-	if (req.originalUrl.includes('/bot/api')) {
-		return req
-			.pipe(request('https://discord.com' + req.originalUrl.slice(4)))
-			.pipe(res);
+	if (req.originalUrl.includes('/api')) {
+		return proxy.web(req, res);
 	}
 	res.send(readFileSync(Constants.DiscordHTMLPath, 'utf8'));
 });
 
-async function start(port = 50000 + Math.floor(Math.random() * 5000)) {
-	if (Constants.TestVencordMode) return 50000;
+module.exports = async function start() {
 	return new Promise((resolve, reject) => {
 		const callback = () => {
 			const address = server.address();
 			resolve(address.port);
-			logger.logger.log(`Server listening on https://localhost:${address.port}`);
+			logger.logger.log(
+				`API Server listening on https://localhost:${address.port}`,
+			);
 		};
-		server
-			.listen(port)
-			.once('listening', callback)
-			.once('error', (err) => {
-				server.removeListener('listening', callback);
-				resolve(start(port + 1));
-			});
+		server.listen(0).once('listening', callback);
 	});
 }
-
-module.exports = start;

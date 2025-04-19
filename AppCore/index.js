@@ -9,8 +9,15 @@ const {
 	screen,
 	ipcMain,
 	Notification,
+	net,
 } = require('electron');
-const { scope, errorHandler, eventLogger, hooks, transports } = require('electron-log');
+const {
+	scope,
+	errorHandler,
+	eventLogger,
+	hooks,
+	transports,
+} = require('electron-log');
 const path = require('path');
 const { fetch } = require('undici');
 const os = require('os');
@@ -23,69 +30,9 @@ const log = scope(Constants.APP_NAME);
 Object.assign(console, scope('ConsoleProxy'));
 errorHandler.startCatching({
 	onError({ createIssue, error, processType, versions }) {
-		// Handle internet connection error
-		if (error.message.includes('ENOTFOUND')) {
-			log.error('DNS lookup failed. Check the domain name or network connection.', error);
-			return false;
-		}
-		if (error.message.includes('EAI_AGAIN')) {
-			log.error('Temporary DNS resolution failure. Please try again later.', error);
-			return false;
-		}
-		if (error.message.includes('ECONNREFUSED')) {
-			log.error('Connection refused. The server may be down or the port is not open.', error);
-			return false;
-		}
-		if (error.message.includes('ETIMEDOUT')) {
-			log.error('Connection timed out. The server is not responding.', error);
-			return false;
-		}
-		if (error.message.includes('ECONNRESET')) {
-			log.error('Connection reset by the server. The server may have closed the connection abruptly.', error);
-			return false;
-		}
-		if (error.message.includes('EHOSTUNREACH')) {
-			log.error('Host unreachable. The server may be offline or the network is down.', error);
-			return false;
-		}
-		if (error.message.includes('ENETUNREACH')) {
-			log.error('Network unreachable. Check your internet connection.', error);
-			return false;
-		}
-		if (error.message.includes('UNABLE_TO_VERIFY_LEAF_SIGNATURE')) {
-			log.error('SSL certificate verification failed. The certificate may be invalid or self-signed.', error);
-			return false;
-		}
-		if (error.message.includes('CERT_HAS_EXPIRED')) {
-			log.error('SSL certificate has expired. The server certificate is no longer valid.', error);
-			return false;
-		}
-		if (error.message.includes('EPROTO')) {
-			log.error('SSL/TLS protocol error. There may be a mismatch in the protocol version.', error);
-			return false;
-		}
-		if (error.message.includes('EADDRINUSE')) {
-			log.error('Address already in use. The port is occupied by another process.', error);
-			return false;
-		}
-		if (error.message.includes('EACCES')) {
-			log.error('Permission denied. You may need elevated privileges to access the resource.', error);
-			return false;
-		}
-		if (error.message.includes('HPE_INVALID_STATUS')) {
-			log.error('Invalid HTTP status code received from the server.', error);
-			return false;
-		}
-		if (error.message.includes('HPE_HEADER_OVERFLOW')) {
-			log.error('HTTP header overflow. The server sent headers that are too large.', error);
-			return false;
-		}
-		if (error.message.includes('ESOCKETTIMEDOUT')) {
-			log.error('Socket timed out. The connection took too long to respond.', error);
-			return false;
-		}
-		return;
-	}
+		log.error(error, processType, versions);
+		return false;
+	},
 });
 eventLogger.startLogging();
 
@@ -109,7 +56,9 @@ hooks.push((message, transport) => {
 	if (transport !== transports.file) {
 		return message;
 	}
-	message.data = message.data.map((l) => l?.toString()?.replace(RegexANSIEscape, ''));
+	message.data = message.data.map((l) =>
+		l?.toString()?.replace(RegexANSIEscape, ''),
+	);
 	return message;
 });
 
@@ -124,7 +73,7 @@ const {
 	PreloadedUserSettingsDB,
 	FrecencyUserSettingsDB,
 } = require('./database/index.js');
-const { PreloadedUserSettings } = require('../DiscordProtos');
+const { PreloadedUserSettings } = require('../discord-protos');
 const Experiments = require('../AppAssets/Experiments.js');
 const Intents = require('../AppAssets/Intents.js');
 const IPCEvent = require('./IPCEvent.js');
@@ -148,6 +97,10 @@ class DiscordBotClient {
 	 * @type {number}
 	 */
 	port;
+	/**
+	 * @type {?Electron.Session}
+	 */
+	customSession;
 	constructor() {
 		this.logger.log('App starting...');
 		this.initApp();
@@ -253,15 +206,13 @@ class DiscordBotClient {
 					{
 						label: 'Clear opened Private Channels',
 						click: () => {
-							DirectMessagesDB.deleteAll().then(
-								() => {
-									this.showNotification({
-										title: 'Opened Private Channels has been cleared',
-										body: 'This will reset all opened Private Channels.',
-										silent: false,
-									});
-								},
-							);
+							DirectMessagesDB.deleteAll().then(() => {
+								this.showNotification({
+									title: 'Opened Private Channels has been cleared',
+									body: 'This will reset all opened Private Channels.',
+									silent: false,
+								});
+							});
 						},
 					},
 				],
@@ -285,12 +236,17 @@ class DiscordBotClient {
 		]);
 		this.initTray(menu);
 	}
-	initApp() {
+	async initApp() {
+		this.port = await server();
 		app.setAppUserModelId(Constants.APP_NAME);
 		// Allow Localhost SSL
 		app.commandLine.appendSwitch('allow-insecure-localhost', 'true');
 		app.commandLine.appendSwitch('ignore-certificate-errors');
 		app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors');
+		app.commandLine.appendSwitch(
+			'host-rules',
+			`MAP ${Constants.CustomDiscordDomain} 127.0.0.1:${this.port}`,
+		);
 		// App Event
 		app.on('window-all-closed', () => {
 			if (process.platform !== 'darwin') {
@@ -321,6 +277,9 @@ class DiscordBotClient {
 			app.quit();
 		} else {
 			app.whenReady().then(async () => {
+				this.logger.info('Creating session...');
+				this.customSession =
+					session.fromPartition('persist:elysia_dbc');
 				this.logger.info('Checking Database...');
 				await Promise.all([
 					DirectMessagesDB.promiseReady,
@@ -346,9 +305,16 @@ class DiscordBotClient {
 
 		this.setupIpcEvents();
 	}
+	get session() {
+		if (this.customSession) {
+			return this.customSession;
+		} else {
+			return session.defaultSession;
+		}
+	}
 	async sessionPatch() {
 		// Disable stripe.com
-		session.defaultSession.webRequest.onBeforeRequest(
+		this.session.webRequest.onBeforeRequest(
 			{
 				urls: ['https://*.stripe.com/*'],
 			},
@@ -359,30 +325,14 @@ class DiscordBotClient {
 				});
 			},
 		);
-		// Patch headers
-		session.defaultSession.webRequest.onBeforeSendHeaders(
-			{
-				urls: ['https://*.discord.com/*'],
-			},
-			(details, callback) => {
-				callback({
-					requestHeaders: {
-						Origin: 'https://discord.com',
-						'User-Agent': details.requestHeaders['User-Agent'],
-						Accept: '*/*',
-						Referer: 'https://discord.com',
-						'Accept-Encoding': 'gzip, deflate, br, zstd',
-						'Accept-Language': 'en-US'
-					}
-				});
-			}
-		);
 		// Intercept responses for specific URLs
-		session.defaultSession.webRequest.onHeadersReceived(
+		this.session.webRequest.onHeadersReceived(
 			{ urls: ['<all_urls>'] },
 			(details, callback) => {
 				// Patch custom css
-				if (details.url.startsWith('https://raw.githubusercontent.com/')) {
+				if (
+					details.url.startsWith('https://raw.githubusercontent.com/')
+				) {
 					if (
 						details.responseHeaders['content-type'].find((_) =>
 							_.includes('text/'),
@@ -391,25 +341,27 @@ class DiscordBotClient {
 						details.responseHeaders['content-type'] = ['text/css'];
 					}
 				}
-				if (details.responseHeaders && details.responseHeaders['access-control-allow-origin']) {
+				if (
+					details.responseHeaders &&
+					details.responseHeaders['access-control-allow-origin']
+				) {
 					// Remove the CORS header
-					delete details.responseHeaders['access-control-allow-origin'];
+					delete details.responseHeaders[
+						'access-control-allow-origin'
+					];
 					// Alternatively, set it to '*' to allow all origins
 					// details.responseHeaders['access-control-allow-origin'] = ['*'];
 				}
 				callback({ responseHeaders: details.responseHeaders });
-			}
+			},
 		);
 		// Load Vencord-Web Extension
-		await session.defaultSession.loadExtension(
-			Constants.VencordExtensionPath,
-		);
+		await this.session.loadExtension(Constants.VencordExtensionPath);
 		this.logger.info(
 			'Vencord-Web Extension loaded, version: ' + VencordVersion,
 		);
 	}
 	async createWindow() {
-		this.port = await server(Constants.PortDefault);
 		this.setupTray();
 		const primaryDisplay = screen.getPrimaryDisplay();
 		const { width, height } = primaryDisplay.workAreaSize;
@@ -427,6 +379,7 @@ class DiscordBotClient {
 				preload: path.join(__dirname, 'ElectronPreload.js'),
 				contextIsolation: true,
 				sandbox: false,
+				session: this.session,
 			},
 			backgroundColor: '#36393f',
 			titleBarStyle: 'hidden',
@@ -438,14 +391,6 @@ class DiscordBotClient {
 				trafficLightPosition: { x: 10, y: 10 },
 			}),
 		});
-		// Check port
-		if (this.port !== Constants.PortDefault) {
-			this.showNotification({
-				title: 'Port In Use',
-				body: 'The default port is already in use by another application, so you will be logged out temporarily.',
-				silent: false,
-			});
-		}
 		// BrowserWindow Event
 		this.win
 			.on('close', (event) => {
@@ -464,7 +409,7 @@ class DiscordBotClient {
 		this.logger.info(`Electron UserData: ${app.getPath('userData')}`);
 		// Microphone
 		if (process.platform === 'darwin') {
-			session.defaultSession.setPermissionRequestHandler(
+			this.session.setPermissionRequestHandler(
 				async (_webContents, permission, callback, details) => {
 					let granted = true;
 					if ('mediaTypes' in details) {
@@ -487,43 +432,67 @@ class DiscordBotClient {
 		// Discord popout
 		this.win.webContents.setWindowOpenHandler(({ url }) => {
 			this.logger.log('WindowOpenHandler', url);
-			if (
-				Constants.AllowPopups.map(u => u.replace('{port}', this.port)).find(
-					u => url.startsWith(u),
-				)
-			) {
-				return {
-					action: 'allow',
-					overrideBrowserWindowOptions: {
-						icon: Constants.icon128,
-						frame: true,
-						autoHideMenuBar: true,
-						width: 1080,
-						height: 720,
-						minWidth: 940,
-						minHeight: 500,
-						webPreferences: {
-							webSecurity: false,
-							nodeIntegration: false,
-							enableRemoteModule: false,
-							preload: path.join(__dirname, 'ElectronPreload.js'),
-							contextIsolation: true,
-							sandbox: false,
+			switch (url) {
+				case 'about:blank':
+				case 'https://discord.com/popout':
+				case 'https://ptb.discord.com/popout':
+				case 'https://canary.discord.com/popout':
+				case `https://localhost:${this.port}/popout`:
+					return {
+						action: 'allow',
+						overrideBrowserWindowOptions: {
+							icon: Constants.icon128,
+							frame: true,
+							autoHideMenuBar: true,
+							width: 1080,
+							height: 720,
+							minWidth: 940,
+							minHeight: 500,
+							webPreferences: {
+								webSecurity: false,
+								nodeIntegration: false,
+								enableRemoteModule: false,
+								preload: path.join(
+									__dirname,
+									'ElectronPreload.js',
+								),
+								contextIsolation: true,
+								sandbox: false,
+							},
+							backgroundColor: '#36393f',
+							show: true,
+							...(process.platform === 'darwin' && {
+								titleBarStyle: 'hidden',
+								trafficLightPosition: { x: 10, y: 10 },
+							}),
 						},
-						backgroundColor: '#36393f',
-						show: true,
-						...(process.platform === 'darwin' && {
-							titleBarStyle: 'hidden',
-							trafficLightPosition: { x: 10, y: 10 },
-						}),
-					},
-				};
+					};
 			}
-			if (!Constants.DeclinePopups.map(u => u.replace('{port}', this.port)).find(
-				u => url.startsWith(u),
-			)) {
-				shell.openExternal(url);
+
+			switch (url) {
+				case 'https://checkout.paypal.com/web':
+				case 'https://discord.com/connections':
+				case 'https://ptb.discord.com/connections':
+				case 'https://canary.discord.com/connections':
+				case `https://localhost:${this.port}/connections`:
+					return { action: 'deny' };
 			}
+
+			try {
+				var { protocol } = new URL(url);
+			} catch {
+				return { action: 'deny' };
+			}
+
+			switch (protocol) {
+				case 'http:':
+				case 'https:':
+				case 'mailto:':
+				case 'steam:':
+				case 'spotify:':
+					shell.openExternal(url);
+			}
+
 			return { action: 'deny' };
 		});
 		// WebContents Event
@@ -535,12 +504,8 @@ class DiscordBotClient {
 				this.win.setTitle(Constants.APP_NAME);
 				this.win.setProgressBar(-1);
 			});
-		// Load the index.html of the app.
-		this.win.loadURL(
-			Constants.TestVencordMode
-				? 'https://canary.discord.com/channels/@me'
-				: `https://localhost:${this.port}`,
-		);
+
+		this.win.loadURL(`https://${Constants.CustomDiscordDomain}`);
 	}
 	setupIpcEvents() {
 		ipcMain
@@ -557,6 +522,11 @@ class DiscordBotClient {
 			})
 			.on(IPCEvent.Close, (event) => {
 				this.win.hide();
+			})
+			.on(IPCEvent.Focus, (event) => {
+				// this.win.focus();
+				this.win.show();
+				this.win.setSkipTaskbar(false);
 			})
 			.on(IPCEvent.GetBotInfo, async (event, token) => {
 				token = token.replace(/Bot/g, '').trim();
@@ -604,7 +574,7 @@ class DiscordBotClient {
 							allShards:
 								Math.ceil(
 									parseInt(data.approximate_guild_count) /
-									Constants.MaxGuildsPerShard,
+										Constants.MaxGuildsPerShard,
 								) || 1,
 						});
 					})
@@ -643,7 +613,10 @@ class DiscordBotClient {
 					);
 					const userData = await DirectMessagesDB.get(botId);
 					if (typeof userId == 'object' && userId?.id) {
-						this.logger.warn('UserId does not match the required format (string)', userId);
+						this.logger.warn(
+							'UserId does not match the required format (string)',
+							userId,
+						);
 						userId = userId.id[0]; // ??? Discord feature ???
 					}
 					if (type == 'add') {

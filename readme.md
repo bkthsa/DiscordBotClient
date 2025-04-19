@@ -114,7 +114,6 @@ Open a command line and execute the following commands:
 ```shell
 git clone https://github.com/aiko-chan-ai/DiscordBotClient.git
 cd DiscordBotClient
-git clone https://github.com/aiko-chan-ai/VencordDBC.git
 npm run requirement
 npm run build
 ```
@@ -144,25 +143,29 @@ Logging in works via the UI on first startup of the application.
 - **View Guilds** *(Lazy load them)*
 - **Manage Guilds, Channels** 
 - **Messages** (Send, View History, Embeds, Reactions, Manage)
-- **Create a Guild**[^1]
+- **~~Create a Guild~~**[^1]
 - **Voice**[^2]
 - **Nitro**[^3]
 - **Direct Message**[^4]
+- **Vencord Built-in**
 
-[^1]: If your bot is in fewer than 10 servers.
+[^1]: See https://discord.com/developers/docs/change-log?topic=HTTP+API#deprecating-guild-creation-by-apps
 [^2]: Except for features related to streams.
-[^3]: Nitro features are reduced: Unable to use stickers everywhere, cannot send files larger than 25 MB or 10 MB (ref: https://discord.com/developers/docs/change-log#default-file-upload-limit-change), and cannot set avatar decorations.
+[^3]: Nitro features are reduced: Unable to use stickers everywhere, cannot send files larger than 10 MB, and cannot set avatar decorations.
 [^4]: Implemented with restrictions on the client.
 
 ---
 
 ## Version
 
+Currently, I will only support the latest version of this application; other versions will not receive bug fixes.
+
 | Discord Build | Hash     | Vencord | Client version           | Status  |
 |---------------|----------|---------|--------------------------|---------|
-| Stable 360320 | 38aca73  | v1.10.9 | v3.6.2                   | Latest  |
-| Stable 355624 | 8dc6074  | v1.10.9 | v3.6.0 - v3.6.1          | Deprecated |
-| Stable 331146 | fddab3e  | v1.10.3 | v3.5.0                   | Deprecated |
+| Stable 389??? | ???????  | v1.11.9 | v3.?.?                   | ~~Latest~~ Beta  |
+| Stable 360320 | 38aca73  | v1.10.9 | v3.6.2                   | ~~Deprecated~~ Latest  |
+| Stable 355624 | 8dc6074  | v1.10.9 | v3.6.0 - v3.6.1          | EOL |
+| Stable 331146 | fddab3e  | v1.10.3 | v3.5.0                   | EOL |
 | Stable 302556 | 366c746  | v1.8.9  | v3.3.0 - v3.4.1          | EOL |
 | Stable 275565 | ede2af3  | v1.7.2  | v3.2.0 - v3.2.1          | EOL |
 | Stable 263796 | 739ec78  | v1.6.7  | v3.0.0 - v3.1.3          | EOL |
@@ -226,10 +229,6 @@ Hit me up if you have a similar project, and I'll gladly add it to the list.
 ```sh
 git clone https://github.com/aiko-chan-ai/DiscordBotClient.git
 cd DiscordBotClient
-git clone https://github.com/Vendicated/Vencord.git
-// Rename from Vencord to VencordDBC
-// Ex: Windows PowerShell
-Rename-Item -Path Vencord -NewName VencordDBC
 ```
 
 2. Install required dependencies.
@@ -242,9 +241,17 @@ npm run requirement
 npm run fetchLatestDiscordBuild
 ```
 
-4. Copy BotClient plugin from [my repo](https://github.com/aiko-chan-ai/VencordDBC)
-> Guide: [Vencord.md](https://github.com/aiko-chan-ai/DiscordBotClient/blob/electron-v3/Vencord.md)
-
+4. (Optional) Update discord-protos
+```sh
+git clone https://github.com/discord-userdoccers/discord-protos.git
+cd discord-protos
+# Delete `.git` folder
+npm install
+cd ..
+npm run proto:update
+npm run proto:build:ts
+```
+ 
 ## Credits
 
 Thanks to [ChrisEric](https://github.com/CE1CECL) for helping me create a local proxy server! (code)
@@ -254,3 +261,9 @@ This project was mainly inspired by [SamuelScheit](https://github.com/SamuelSche
 develop any further.
 
 And a big thank to [Vencord](https://github.com/Vendicated/Vencord) developers for making it easier for me to create this app
+
+
+## Disclaimer
+
+Discord is trademark of Discord Inc. and solely mentioned for the sake of descriptivity.
+Mention of it does not imply any affiliation with or endorsement by Discord Inc.
